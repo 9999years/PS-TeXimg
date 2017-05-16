@@ -3,8 +3,8 @@
 PS-TeXimg is a PowerShell module that exports a cmdlet `TeXimg` which renders
 LaTeX equation and saves them as images / copies them to the clipboard.
 
-PS-TeXimg requires `pdflatex` ([TeX][1]), `gs` ([Ghost Script][2], which may require an
-alias from `gswin64c` ⇒ `gs`), and `magick` ([Image Magick][3]).
+PS-TeXimg requires `pdflatex` ([TeX][1]), `gs` ([Ghost Script][2], which may
+require an alias from `gswin64c` ⇒ `gs`), and `magick` ([Image Magick][3]).
 
 ## Examples
 
@@ -24,6 +24,18 @@ And save / copy this image:
 
 ![Quadratic formula][example-1]
 
+## Installation
+
+1. Install PS-TeXimg’s prerequisites
+   * `pdflatex`, included with [any TeX distribution][1]
+   * `gs` from [Ghost Script][2] (which may require `New-Alias gs gswin64c` on
+     Windows)
+   * `magick` from [Image Magick][3]
+2. Import the module in your PowerShell `$PROFILE` with
+   ```
+       Import-Module "../../path/to/module/PS-TeXimg"
+   ```
+
 ## Missing / To-Do
 
 * Documentation
@@ -31,10 +43,14 @@ And save / copy this image:
   without `-Verbose`) and Image Magick (outputs to `stderr` [I think] thereby
   skipping `-Verbose` *and* error-handling methods) (also
   `GeometryDoesNotContainImage` is ignored).
+
+### Non-guaranteed possibilities
+
 * Implementation of more options (like extra preamble code) (suggestions?)
 * Implementation of hashes in output filenames
 * Integration of Ghost Script and Image Magick into a single binary to be
   distributed along the cmdlet (might be out of scope).
+* Package options for things like upright integrals
 
 [1]: https://en.wikibooks.org/wiki/LaTeX/Installation#Distributions
 [2]: https://ghostscript.com/download/

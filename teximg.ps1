@@ -10,13 +10,16 @@ function TeXImg {
 		)]
 		[String[]]$Formulas,
 		[Switch]$Stix,
-		[Int]$Resolution = 150,
-                [Int]$Border = 50,
+		[Int]$Resolution = 600,
+                [Int]$Border = 10,
 		[String[]]$Packages,
                 [String]$Directory = "~\Pictures\Screenshots",
 		[Switch]$KeepTemp,
                 [Switch]$Open,
+                [Switch]$DontSave,
 		[Switch]$NotMath,
+		[Switch]$Hard,
+		[Switch]$Soft,
 		[String]$FileNameFormat = "yyyy-MM-ddTHH-mm-ss_\texi\m\g",
 		[String]$HashType = "SHA256"
 	)
@@ -69,34 +72,23 @@ function TeXImg {
 			$body = $Formula
 		}
 
+		If($Border -lt 0) {
+			Write-Warning "Invalid border (<0), changing to 0"
+			$Border = 0
+		}
+
 		$code = " `
-		\documentclass{article}
-		\nonstopmode
-		\usepackage[
-			paperwidth  = 20cm,
-			paperheight = 10cm,
-			top         = 0.5cm,
-			bottom      = 0.5cm,
-			margin      = 0.5cm,
-			scale       = 1,
-			offset      = 0in,
-			noheadfoot,
-			nomarginpar,
-			]{geometry}
-		\usepackage{adjustbox}
+		\documentclass[
+			border=$($Border)pt,
+			varwidth=true
+		]{standalone}
+		$(ForEach($package in $Packages) { "\usepackage{$package}" })
 		$(If($Stix) {"\usepackage{stix}" })
 		\usepackage{amsmath}
 		\usepackage{amssymb}
 		\usepackage{mathtools}
-		$(ForEach($package in $Packages) { "\usepackage{$package}" })
-		\pagestyle{empty}
-		\parindent=0em
-		\parskip=0em
 		\begin{document}
-			\maxsizebox*{0.99\textwidth}{0.99\textheight}{%
-			\minsizebox*{0.99\textwidth}{0.99\textheight}{%
-				$body
-			}}%
+		$body
 		\end{document}"
 
 		Write-Verbose "LaTeX code:`n=====`n$code`n====="
@@ -114,22 +106,23 @@ function TeXImg {
 			Check $tmp_folder\$texname.log for more details."
 		}
 
+		If($Soft) {
+			$Resolution *= 2
+		}
+
 		If($Resolution -lt 2) {
 			Write-Warning "Invalid resolution (<2), changing to 2"
 			$Resolution = 2
-		}
-
-		If($Border -lt 0) {
-			Write-Warning "Invalid border (<0), changing to 0"
-			$Border = 0
 		}
 
 		Write-Output "Rendering PDF as PNG"
 
 		$gs_output = (gs `
 			-sDEVICE=png16m `
-			-dTextAlphaBits=4 `
-			-dGraphicsAlphaBits=4 `
+			"$(If(!$Hard) {
+				"-dTextAlphaBits=4 `
+				-dGraphicsAlphaBits=4"
+			})" `
 			-sPageList=1 `
 			-r"$Resolution" `
 			-o "$prename.png" `
@@ -145,16 +138,43 @@ function TeXImg {
 
 		Write-Output "Trimming PNG"
 
-		$magick_output = magick "$prename.png" -trim -bordercolor white -border $Border "$fname.png"
+		$magick_output = magick "$prename.png"  -resize "$(If($Soft) { "50%" } Else { "100%" })" "$fname.png"
 		Write-Verbose ($magick_output -join "`n")
 
 		If((Test-Path "$tmp_folder\$fname.png") -eq $False) {
 			Pop-Location
-			Write-Error "Image Magick produced no PNG output!`
-			Something must have gone severely wrong."
+			Write-Error "Image Magick produced no PNG output!  Something must have gone severely wrong."
 		}
 
-		Move-Item "$fname.png" "$Directory/$fname.png"
+		$diff = New-Timespan -Start $now -End ([DateTime]::Now)
+		$diffstr = "$($diff.ToString("hh\:mm\:\:ss")).$($diff.Milliseconds)"
+		$finalpath = ""
+		If($DontSave) {
+			$finalpath = "$tmp_folder\$fname.png"
+		} Else {
+			$finalpath = "$Directory\$fname.png"
+		}
+		If(!$DontSave) {
+			Move-Item "$fname.png" $finalpath
+			Write-Output "Image written to ``$finalpath`` in $diffstr"
+			If($Open) {
+				Invoke-Item $finalpath
+				Write-Output "Image opened"
+			}
+		} Else {
+			Write-Output "Completed in $diffstr"
+			If($Open) {
+				Write-Warning "-Open is not supported with -DontSave (what file could be opened?) and will be ignored"
+			}
+		}
+		If(!$DontCopy) {
+			[Windows.Forms.Clipboard]::SetImage(
+				[Drawing.Image]::Fromfile(
+					(Resolve-Path $finalpath)
+				)
+			)
+			Write-Output "Image copied to clipboard"
+		}
 		# get out of the old folder so we can delete it
 		Set-Location ../ > $Null
 		[IO.Directory]::SetCurrentDirectory($PWD)
@@ -164,19 +184,6 @@ function TeXImg {
 			} Catch [IO.IOException] {
 				Write-Warning "Access error deleting the temp folder; Check if it's open in another window/process?"
 			}
-		}
-		$diff = New-Timespan -Start $now -End ([DateTime]::Now)
-		Write-Output "Image written to ``$Directory\$fname.png in $($diff.ToString("hh\:mm\:\:ss")).$($diff.Milliseconds)"
-		
-		If($Open) {
-			Invoke-Item "$Directory\$fname.png"
-			Write-Output "Image opened"
-		}
-		If(!$DontCopy) {
-			[Windows.Forms.Clipboard]::SetImage(
-				[Drawing.Image]::Fromfile((Resolve-Path "$Directory\$fname.png"))
-			)
-			Write-Output "Image copied to clipboard"
 		}
 
 		Pop-Location
