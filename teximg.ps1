@@ -1,30 +1,33 @@
-function TeXImg {
+function New-TeXimg {
 	[CmdletBinding()]
 	Param(
 		[Parameter(
 			Mandatory = $True,
 			Position = 0,
 			ValueFromPipeline = $True,
-			ValueFromRemainingArguments = $True,
 			HelpMessage = "The LaTeX formula to render"
 		)]
-		[String[]]$Formulas,
+		[String]$Formula,
 		[Switch]$Stix,
 		[Int]$Resolution = 600,
-                [Int]$Border = 10,
+		[Int]$Border = 10,
 		[String[]]$Packages,
-                [String]$Directory = "~\Pictures\Screenshots",
+		[String]$Directory = "~\Pictures\Screenshots",
+		[String]$FileNameFormat = "yyyy-MM-ddTHH-mm-ss_\texi\m\g",
+		[String]$HashType = "SHA256",
+		[String]$LaTeX = "xelatex",
+		[Collections.ArrayList]$ExtraArgs =
+			[Collections.ArrayList]::New(),
 		[Switch]$KeepTemp,
-                [Switch]$Open,
-                [Switch]$DontSave,
+		[Switch]$Open,
+		[Switch]$NoSave,
+		[Switch]$NoClipboard,
 		[Switch]$NotMath,
 		[Switch]$Hard,
-		[Switch]$Soft,
-		[String]$FileNameFormat = "yyyy-MM-ddTHH-mm-ss_\texi\m\g",
-		[String]$HashType = "SHA256"
+		[Switch]$Soft
 	)
 	Process {
-	ForEach($Formula in $Formulas) {
+		$originalDir = Convert-Path (Get-Location)
 		Write-Verbose "Saving current directory, making temp folder"
 		Push-Location
 		$tmp_folder = "~\.teximg_tmp"
@@ -94,13 +97,22 @@ function TeXImg {
 		Write-Verbose "LaTeX code:`n=====`n$code`n====="
 
 		# annoying af to write no-bom utf8 but whatever
-		[IO.Directory]::SetCurrentDirectory($PWD)
+		[IO.Directory]::SetCurrentDirectory($originalDir)
 		[IO.File]::WriteAllLines("$texname.tex", $code)
 
-		pdflatex "$texname.tex" -job-name="$texname" | Write-Verbose
+		$ExtraArgs.Add("$texname.tex") | Out-Null
+		$ExtraArgs.Add("-job-name=`"$texname`"") | Out-Null
+		$ExtraArgs.Add("-interaction=nonstopmode") | Out-Null
+		$ExtraArgs.Add("-halt-on-error") | Out-Null
+		$ExtraArgs.Add("-include-directory=$originalDir") | Out-Null
+
+		"Running $LaTeX $($ExtraArgs.ToArray())" | Write-Verbose
+		& $LaTeX $ExtraArgs | Tee-Object -Variable latexOutput | Write-Verbose
 
 		If((Test-Path "$tmp_folder\$texname.pdf") -eq $False) {
 			Pop-Location
+			"$LaTeX output:"
+			$latexOutput
 			Write-Error "pdflatex produced no PDF output!`
 			Something must have gone severely wrong.`
 			Check $tmp_folder\$texname.log for more details."
@@ -138,7 +150,7 @@ function TeXImg {
 
 		Write-Output "Trimming PNG"
 
-		$magick_output = magick "$prename.png"  -resize "$(If($Soft) { "50%" } Else { "100%" })" "$fname.png"
+		$magick_output = magick "$prename.png" -resize "$(If($Soft) { "50%" } Else { "100%" })" "$fname.png"
 		Write-Verbose ($magick_output -join "`n")
 
 		If((Test-Path "$tmp_folder\$fname.png") -eq $False) {
@@ -149,12 +161,12 @@ function TeXImg {
 		$diff = New-Timespan -Start $now -End ([DateTime]::Now)
 		$diffstr = "$($diff.ToString("hh\:mm\:\:ss")).$($diff.Milliseconds)"
 		$finalpath = ""
-		If($DontSave) {
+		If($NoSave) {
 			$finalpath = "$tmp_folder\$fname.png"
 		} Else {
 			$finalpath = "$Directory\$fname.png"
 		}
-		If(!$DontSave) {
+		If(!$NoSave) {
 			Move-Item "$fname.png" $finalpath
 			Write-Output "Image written to ``$finalpath`` in $diffstr"
 			If($Open) {
@@ -164,10 +176,10 @@ function TeXImg {
 		} Else {
 			Write-Output "Completed in $diffstr"
 			If($Open) {
-				Write-Warning "-Open is not supported with -DontSave (what file could be opened?) and will be ignored"
+				Write-Warning "-Open is not supported with -NoSave (what file could be opened?) and will be ignored"
 			}
 		}
-		If(!$DontCopy) {
+		If(!$NoClipboard) {
 			[Windows.Forms.Clipboard]::SetImage(
 				[Drawing.Image]::Fromfile(
 					(Resolve-Path $finalpath)
@@ -177,7 +189,7 @@ function TeXImg {
 		}
 		# get out of the old folder so we can delete it
 		Set-Location ../ > $Null
-		[IO.Directory]::SetCurrentDirectory($PWD)
+		[IO.Directory]::SetCurrentDirectory($originalDir)
 		If(!$KeepTemp) {
 			Try {
 				Remove-Item $tmp_folder -Recurse -Force > $Null
@@ -188,5 +200,9 @@ function TeXImg {
 
 		Pop-Location
 	}
-	}
 }
+
+# for using the clipboard
+Add-Type -AssemblyName System.Windows.Forms
+
+New-Alias teximg New-TeXimg -ErrorAction SilentlyContinue
