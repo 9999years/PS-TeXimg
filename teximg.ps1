@@ -12,10 +12,13 @@ function New-TeXimg {
 		[Int]$Resolution = 600,
 		[Int]$Border = 10,
 		[String[]]$Packages,
+		[Switch]$NoDefaultPackages,
+		[Switch]$NoDefaultArgs,
 		[String]$Directory = "~\Pictures\Screenshots",
 		[String]$FileNameFormat = "yyyy-MM-ddTHH-mm-ss_\texi\m\g",
 		[String]$HashType = "SHA256",
 		[String]$LaTeX = "xelatex",
+		[String]$ExtraPreamble,
 		[Collections.ArrayList]$ExtraArgs =
 			[Collections.ArrayList]::New(),
 		[Switch]$KeepTemp,
@@ -85,11 +88,14 @@ function New-TeXimg {
 			border=$($Border)pt,
 			varwidth=true
 		]{standalone}
+		\errorcontextlines=10
 		$(ForEach($package in $Packages) { "\usepackage{$package}" })
 		$(If($Stix) {"\usepackage{stix}" })
+		$(If(!$NoDefaultPackages) { "`
 		\usepackage{amsmath}
 		\usepackage{amssymb}
-		\usepackage{mathtools}
+		\usepackage{mathtools}" })
+		$ExtraPreamble
 		\begin{document}
 		$body
 		\end{document}"
@@ -102,9 +108,11 @@ function New-TeXimg {
 
 		$ExtraArgs.Add("$texname.tex") | Out-Null
 		$ExtraArgs.Add("-job-name=`"$texname`"") | Out-Null
-		$ExtraArgs.Add("-interaction=nonstopmode") | Out-Null
-		$ExtraArgs.Add("-halt-on-error") | Out-Null
-		$ExtraArgs.Add("-include-directory=$originalDir") | Out-Null
+		If(!$NoDefaultArgs) {
+			$ExtraArgs.Add("-interaction=nonstopmode") | Out-Null
+			$ExtraArgs.Add("-halt-on-error") | Out-Null
+			$ExtraArgs.Add("-include-directory=$originalDir") | Out-Null
+		}
 
 		"Running $LaTeX $($ExtraArgs.ToArray())" | Write-Verbose
 		& $LaTeX $ExtraArgs | Tee-Object -Variable latexOutput | Write-Verbose
