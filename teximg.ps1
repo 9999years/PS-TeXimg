@@ -37,7 +37,7 @@ function New-TeXimg {
 		Try {
 			New-Item $tmp_folder -Type Directory > $Null
 		} Catch [IO.IOException] {
-			# there should be a less verbose way 
+			# there should be a less verbose way
 			Write-Warning "Temp folder already exists!"
 			$message  = "Continuing may overwrite previous files in $tmp_folder"
 			$question = "Continue?"
@@ -137,16 +137,17 @@ function New-TeXimg {
 
 		Write-Output "Rendering PDF as PNG"
 
-		$gs_output = (gs `
-			-sDEVICE=png16m `
-			"$(If(!$Hard) {
-				"-dTextAlphaBits=4 `
-				-dGraphicsAlphaBits=4"
-			})" `
-			-sPageList=1 `
-			-r"$Resolution" `
-			-o "$prename.png" `
-			"$texname.pdf")
+		$gsArgs = @{
+			FilePath="$texname.pdf"
+			OutFile="$prename.png"
+			Resolution=$Resolution
+		}
+
+		If($Hard) {
+			$gsArgs.Add('Hard', $True)
+		}
+
+		$gs_output = Convert-PDFtoPNG @gsArgs
 		Write-Verbose ($gs_output -join "`n")
 
 		If((Test-Path "$tmp_folder\$prename.png") -eq $False) {
@@ -214,3 +215,62 @@ function New-TeXimg {
 Add-Type -AssemblyName System.Windows.Forms
 
 New-Alias teximg New-TeXimg -ErrorAction SilentlyContinue
+
+function Convert-PDFtoPNG {
+	[CmdletBinding()]
+	Param (
+		[Parameter(ValueFromPipeline=$true,
+			Mandatory=$True)]
+		[String]$FilePath,
+		[String]$OutFile="",
+		[Switch]$Hard,
+		[Int]$Resolution=1000,
+		[String]$GhostScript="gs"
+	)
+
+	Process {
+		# throws if FP not found
+		$truePath = Resolve-Path $FilePath
+
+		If($truePath.Length -gt 1) {
+			throw "Multiple files matching $FilePath found!"
+		} Else {
+			$truePath = $truePath[0]
+		}
+
+		If(!$truePath.Path.EndsWith(".pdf")) {
+			Write-Warning "$truePath doesn't end with ``.pdf``"
+		}
+
+		If($OutFile -eq "") {
+			$OutFile = Join-Path `
+				(Split-Path $truePath) `
+				((Split-Path $truePath -Leaf) -Replace "\.pdf", ".png")
+			Write-Verbose "OutFile set to $Outfile"
+		}
+
+		Write-Verbose "Converting $truePath to $OutFile"
+
+		$gsArgs = [Collections.ArrayList]::new(10)
+		$gsArgs.AddRange((
+			"-sDEVICE=png16m",
+			"-sPageList=1",
+			"-r$Resolution",
+			"-o", $OutFile,
+			$truePath
+		))
+
+		If(!$Hard) {
+			$gsArgs.AddRange((
+				"-dTextAlphaBits=4",
+				"-dGraphicsAlphaBits=4"
+			))
+		}
+
+		& $GhostScript $gsArgs
+
+		If(!(Test-Path $OutFile)) {
+			throw "GhostScript wrote no output to $OutFile"
+		}
+	}
+}
