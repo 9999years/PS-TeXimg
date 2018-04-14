@@ -222,6 +222,7 @@ function Convert-PDFtoPNG {
 		[Parameter(ValueFromPipeline=$true,
 			Mandatory=$True)]
 		[String]$FilePath,
+		[Switch]$Literal,
 		[String]$OutFile="",
 		[Switch]$Hard,
 		[Int]$Resolution=1000,
@@ -230,7 +231,13 @@ function Convert-PDFtoPNG {
 
 	Process {
 		# throws if FP not found
-		$truePath = Resolve-Path $FilePath
+		$rpArgs = @{
+			Path = $FilePath
+		}
+		If($Literal) {
+			$rpArgs.Add("Literal", $True)
+		}
+		$truePath = Resolve-Path @rpArgs
 
 		If($truePath.Length -gt 1) {
 			throw "Multiple files matching $FilePath found!"
